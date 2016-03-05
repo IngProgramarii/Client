@@ -3,21 +3,19 @@ package com.project.ingprog.gamegym;
 import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
 import android.annotation.TargetApi;
-import android.content.pm.PackageManager;
-import android.support.annotation.NonNull;
-import android.support.design.widget.Snackbar;
-import android.support.v7.app.AppCompatActivity;
 import android.app.LoaderManager.LoaderCallbacks;
-
 import android.content.CursorLoader;
 import android.content.Loader;
+import android.content.pm.PackageManager;
 import android.database.Cursor;
 import android.net.Uri;
 import android.os.AsyncTask;
-
 import android.os.Build;
 import android.os.Bundle;
 import android.provider.ContactsContract;
+import android.support.annotation.NonNull;
+import android.support.design.widget.Snackbar;
+import android.support.v7.app.AppCompatActivity;
 import android.text.TextUtils;
 import android.view.KeyEvent;
 import android.view.View;
@@ -29,6 +27,14 @@ import android.widget.Button;
 import android.widget.EditText;
 import android.widget.TextView;
 
+import com.github.nkzawa.emitter.Emitter;
+import com.github.nkzawa.socketio.client.IO;
+import com.github.nkzawa.socketio.client.Socket;
+
+import org.json.JSONException;
+import org.json.JSONObject;
+
+import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -51,6 +57,8 @@ public class LoginActivity extends AppCompatActivity implements LoaderCallbacks<
     private static final String[] DUMMY_CREDENTIALS = new String[]{
             "foo@example.com:hello", "bar@example.com:world"
     };
+
+    private Socket mSocket;
     /**
      * Keep track of the login task to ensure we can cancel it if requested.
      */
@@ -299,6 +307,11 @@ public class LoginActivity extends AppCompatActivity implements LoaderCallbacks<
         private final String mEmail;
         private final String mPassword;
 
+        private boolean loginFinished, loginSucceded;
+
+
+        Socket mSocket;
+
         UserLoginTask(String email, String password) {
             mEmail = email;
             mPassword = password;
@@ -308,23 +321,50 @@ public class LoginActivity extends AppCompatActivity implements LoaderCallbacks<
         protected Boolean doInBackground(Void... params) {
             // TODO: attempt authentication against a network service.
 
+            loginFinished = false;
+            loginSucceded = false;
+
             try {
+                JSONObject credentials = new JSONObject();
+
+                try {
+                    credentials.put("email", mEmail);
+                    credentials.put("password", mPassword);
+                    credentials.put("action", "login");
+                } catch (JSONException ex)
+                {
+                    return false;
+                }
+
                 // Simulate network access.
-                Thread.sleep(2000);
+
+                mSocket = IO.socket("http://localhost:5000");
+                mSocket.on(Socket.EVENT_MESSAGE, onLogin);
+                mSocket.connect();
+                mSocket.emit("Login", credentials);
+
+                int cycles = 0;
+
+                while (!loginFinished && cycles < 100)
+                {
+                    Thread.sleep(100);
+                    cycles++;
+                    mSocket.off((Socket.EVENT_MESSAGE));
+                    mSocket.disconnect();
+                }
+
+            }
+            catch (URISyntaxException e) {
+                mSocket.off((Socket.EVENT_MESSAGE));
+                mSocket.disconnect();
+                return false;
             } catch (InterruptedException e) {
+                mSocket.off((Socket.EVENT_MESSAGE));
+                mSocket.disconnect();
                 return false;
             }
 
-            for (String credential : DUMMY_CREDENTIALS) {
-                String[] pieces = credential.split(":");
-                if (pieces[0].equals(mEmail)) {
-                    // Account exists, return true if the password matches.
-                    return pieces[1].equals(mPassword);
-                }
-            }
-
-            // TODO: register the new account here.
-            return true;
+            return loginSucceded;
         }
 
         @Override
@@ -345,6 +385,29 @@ public class LoginActivity extends AppCompatActivity implements LoaderCallbacks<
             mAuthTask = null;
             showProgress(false);
         }
+
+        private Emitter.Listener onLogin = new Emitter.Listener() {
+            @Override
+            public void call(Object... args) {
+                JSONObject data = (JSONObject) args[0];
+
+                boolean success = false;
+                try {
+                    success = data.getBoolean("success");
+                } catch (JSONException e) {
+                    loginFinished = true;
+                    loginSucceded = false;
+                    return;
+                }
+                if (success) {
+                    loginFinished = true;
+                    loginSucceded = true;
+                } else {
+                    loginFinished = true;
+                    loginSucceded = false;
+                }
+            }
+        };
     }
 }
 
