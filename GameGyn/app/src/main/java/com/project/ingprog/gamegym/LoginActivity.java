@@ -338,11 +338,10 @@ public class LoginActivity extends AppCompatActivity implements LoaderCallbacks<
 
                 // Simulate network access.
 
-                mSocket = IO.socket("http://localhost:5000");
+                mSocket = IO.socket("http://192.168.1.7:11000");
                 mSocket.on(Socket.EVENT_MESSAGE, onLogin);
                 mSocket.connect();
                 mSocket.emit("Login", credentials);
-
                 int cycles = 0;
 
                 while (!loginFinished && cycles < 100)
